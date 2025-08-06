@@ -3,7 +3,7 @@ import fs from "fs";
 
 const config = {
   name: "bot",
-  description: "Auto bot reply via SIM API",
+  description: "Auto chat with loop using SIM API",
   usage: "bot hi | bot <your message>",
   cooldown: 3,
   permissions: [0, 1, 2],
@@ -11,10 +11,11 @@ const config = {
 };
 
 const LOCAL_CACHE = "./cache/teach.json";
+const LAST_REPLY_CACHE = "./cache/last_reply.json";
 const SIM_API_URL = "http://65.109.80.126:20392/sim";
 
-// 🔰 Ensure file/folder with default messages
-function ensureTeachFile() {
+// Ensure cache folder & default messages
+function ensureCache() {
   const defaultData = [
     "Hello! How can I help you today?",
     "I'm always here for you!",
@@ -31,16 +32,34 @@ function ensureTeachFile() {
   if (!fs.existsSync(LOCAL_CACHE)) {
     fs.writeFileSync(LOCAL_CACHE, JSON.stringify(defaultData, null, 2), "utf-8");
   }
+
+  if (!fs.existsSync(LAST_REPLY_CACHE)) {
+    fs.writeFileSync(LAST_REPLY_CACHE, JSON.stringify({ last: "" }), "utf-8");
+  }
 }
 
-// 🧠 Main function
+function getLastReply() {
+  if (!fs.existsSync(LAST_REPLY_CACHE)) return "";
+  const data = JSON.parse(fs.readFileSync(LAST_REPLY_CACHE, "utf-8"));
+  return data.last || "";
+}
+
+function setLastReply(text) {
+  fs.writeFileSync(LAST_REPLY_CACHE, JSON.stringify({ last: text }, null, 2), "utf-8");
+}
+
+function saveTeachData(data) {
+  fs.writeFileSync(LOCAL_CACHE, JSON.stringify(data, null, 2), "utf-8");
+}
+
 export async function onCall({ message, args }) {
-  ensureTeachFile();
+  ensureCache();
 
   const input = args.join(" ").trim();
   const lower = input.toLowerCase();
+  const lastBotReply = getLastReply();
 
-  // ✅ If "bot" or "bot hi" ➜ random from local file
+  // ✅ bot or bot hi = random from local
   if (lower === "hi" || input === "") {
     const data = JSON.parse(fs.readFileSync(LOCAL_CACHE, "utf-8"));
     const filtered = data.filter(msg =>
@@ -49,26 +68,35 @@ export async function onCall({ message, args }) {
 
     if (!filtered.length) return message.reply("⚠️ No valid messages available.");
     const random = filtered[Math.floor(Math.random() * filtered.length)];
+    setLastReply(random);
     return message.reply(random);
   }
 
-  // 🤖 Try SIM API
+  // 🔁 User replied same as last bot message → use that as new input
+  const isLoop = input === lastBotReply;
+
   try {
     const res = await axios.get(SIM_API_URL, {
-      params: { type: "ask", ask: input }
+      params: { type: "ask", ask: isLoop ? input : input }
     });
 
-    const reply = res.data?.data?.msg;
-
-    if (reply && typeof reply === "string" && reply.trim() !== "") {
+    if (res.data && res.data.data && res.data.data.msg) {
+      const reply = res.data.data.msg;
+      setLastReply(reply);
       return message.reply(reply);
     }
-  } catch (err) {
-    console.error("SIM API error:", err.message);
+  } catch (e) {
+    // continue to save locally
   }
 
-  // ❌ If SIM gives no reply
-  return message.reply("⚠️ Sorry, no reply found.");
+  // ➕ Fallback Save
+  let localData = fs.existsSync(LOCAL_CACHE)
+    ? JSON.parse(fs.readFileSync(LOCAL_CACHE, "utf-8"))
+    : [];
+
+  localData.push(input);
+  saveTeachData(localData);
+  return message.reply("✅ Saved: " + input);
 }
 
 export default {
