@@ -5,7 +5,7 @@ const config = {
     description: "Check temporary mail via hotmail999.com API",
     usage: "<email@example.com>",
     cooldown: 5,
-    permissions: [2], // group admin
+    permissions: [0], // group admin
     credits: "LIKHON AHMED"
 };
 
