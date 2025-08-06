@@ -3,7 +3,7 @@ import fs from "fs";
 
 const config = {
   name: "bot",
-  description: "Auto bot reply via SIM API",
+  description: "Auto bot reply via SIM API only",
   usage: "bot hi | bot <your message>",
   cooldown: 3,
   permissions: [0, 1, 2],
@@ -31,47 +31,26 @@ function ensureTeachFile() {
   }
 }
 
-function saveTeachData(data) {
-  fs.writeFileSync(LOCAL_CACHE, JSON.stringify(data, null, 2), "utf-8");
-}
-
 export async function onCall({ message, args }) {
   ensureTeachFile();
 
   const input = args.join(" ").trim();
-  const lower = input.toLowerCase();
-
-  // bot বা bot hi হলে লোকাল ফাইল থেকে র্যান্ডম রিপ্লাই
-  if (input === "" || lower === "hi") {
-    const data = JSON.parse(fs.readFileSync(LOCAL_CACHE, "utf-8"));
-    const filtered = data.filter(msg => typeof msg === "string" && !msg.startsWith("http"));
-    if (!filtered.length) return message.reply("⚠️ No valid messages available.");
-    const random = filtered[Math.floor(Math.random() * filtered.length)];
-    return message.reply(random);
-  }
 
   // SIM API কল করে রিপ্লাই নেওয়া
   try {
     const res = await axios.get(SIM_API_URL, {
-      params: { type: "ask", ask: input }
+      params: { type: "ask", ask: input || "hi" }
     });
     const reply = res.data;
     if (reply && typeof reply === "string" && reply.trim() !== "") {
       return message.reply(reply);
+    } else {
+      // যদি API থেকে কোনো রিপ্লাই না আসে
+      return message.reply("⚠️ Sorry, no reply found.");
     }
   } catch (err) {
-    // API error হলে নীরব
+    return message.reply("⚠️ API error. Please try again later.");
   }
-
-  // SIM API তে কিছু না আসলে ইনপুট লোকাল ফাইলে সেভ করো
-  let localData = [];
-  if (fs.existsSync(LOCAL_CACHE)) {
-    localData = JSON.parse(fs.readFileSync(LOCAL_CACHE, "utf-8"));
-  }
-  localData.push(input);
-  saveTeachData(localData);
-
-  return message.reply("✅ Saved: " + input);
 }
 
 export default {
