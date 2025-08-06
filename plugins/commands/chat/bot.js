@@ -48,10 +48,6 @@ function setLastReply(text) {
   fs.writeFileSync(LAST_REPLY_CACHE, JSON.stringify({ last: text }, null, 2), "utf-8");
 }
 
-function saveTeachData(data) {
-  fs.writeFileSync(LOCAL_CACHE, JSON.stringify(data, null, 2), "utf-8");
-}
-
 export async function onCall({ message, args }) {
   ensureCache();
 
@@ -86,17 +82,10 @@ export async function onCall({ message, args }) {
       return message.reply(reply);
     }
   } catch (e) {
-    // continue to save locally
+    // ignore error
   }
 
-  // ➕ Fallback Save
-  let localData = fs.existsSync(LOCAL_CACHE)
-    ? JSON.parse(fs.readFileSync(LOCAL_CACHE, "utf-8"))
-    : [];
-
-  localData.push(input);
-  saveTeachData(localData);
-  return message.reply("✅ Saved: " + input);
+  return message.reply("⚠️ Sorry, no reply found.");
 }
 
 export default {
