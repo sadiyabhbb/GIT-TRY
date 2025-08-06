@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const config = {
-    name: "tm",
+    name: "hm",
     description: "Check temporary mail via hotmail999.com API",
     usage: "<email@example.com>",
     cooldown: 5,
