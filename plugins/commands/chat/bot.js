@@ -7,7 +7,7 @@ const config = {
   usage: "bot hi | bot <your message>",
   cooldown: 3,
   permissions: [0, 1, 2],
-  credits: "LIKHON AHMED"
+  credits: "RIN"
 };
 
 const TEACH_API_URL = "https://raw.githubusercontent.com/MOHAMMAD-NAYAN-07/Nayan/main/api.json";
@@ -76,10 +76,15 @@ export async function onCall({ message, args }) {
   let teachData = await getTeachData();
   if (!Array.isArray(teachData)) teachData = [];
 
-  // ✅ Just "bot" or "bot hi"
+  // ✅ Filter out links (only allow text)
+  const filtered = teachData.filter(msg =>
+    typeof msg === "string" && !msg.startsWith("http")
+  );
+
+  // ✅ Just "bot" or "bot hi" ➜ reply from filtered data
   if (input === "" || lower === "hi") {
-    if (!teachData.length) return message.reply("No data available.");
-    const random = teachData[Math.floor(Math.random() * teachData.length)];
+    if (!filtered.length) return message.reply("No valid messages available.");
+    const random = filtered[Math.floor(Math.random() * filtered.length)];
     return message.reply(random);
   }
 
