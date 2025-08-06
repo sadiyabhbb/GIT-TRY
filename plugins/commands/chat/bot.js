@@ -7,7 +7,7 @@ const config = {
   usage: "bot hi | bot <your message>",
   cooldown: 3,
   permissions: [0, 1, 2],
-  credits: "LIKHON AHMED"
+  credits: "RIN"
 };
 
 const TEACH_API_URL = "https://raw.githubusercontent.com/MOHAMMAD-NAYAN-07/Nayan/main/api.json";
@@ -33,12 +33,12 @@ function ensureTeachFile() {
   }
 }
 
-// 📥 Read teach data
+// 📥 Read teach data (Sim API preferred)
 async function getTeachData() {
   try {
     const res = await axios.get(TEACH_API_URL);
-    if (Array.isArray(res.data) && res.data.length > 0) {
-      return res.data;
+    if (res.data && Array.isArray(res.data.teach)) {
+      return res.data.teach;
     }
   } catch (e) {
     // fallback to local
