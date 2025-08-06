@@ -33,10 +33,10 @@ export async function onCall({ message, args, userPermissions }) {
         const { subject, from_field, date, code } = latestMail;
 
         return message.reply(
-            "📥 New Email:\n" +
-            `👤 Sender: ${from_field}\n` +
-            `📝 Subject: ${subject}\n` +
-            `📅 Time: ${date}\n` +
+            "📥 New Email:\n\n" +
+            `👤 Sender: ${from_field}\n\n` +
+            `📝 Subject: ${subject}\n\n` +
+            `📅 Time: ${date}\n\n` +
             (code ? `🔐 Code: ${code}` : "❌ Not code received")
         );
 
