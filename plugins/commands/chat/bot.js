@@ -7,7 +7,7 @@ const config = {
   usage: "bot hi | bot <your message>",
   cooldown: 3,
   permissions: [0, 1, 2],
-  credits: "RIN"
+  credits: "LIKHON AHMED"
 };
 
 const TEACH_API_URL = "https://raw.githubusercontent.com/MOHAMMAD-NAYAN-07/Nayan/main/api.json";
@@ -37,13 +37,23 @@ function ensureTeachFile() {
 async function getTeachData() {
   try {
     const res = await axios.get(TEACH_API_URL);
-    if (res.data && Array.isArray(res.data.teach)) {
-      return res.data.teach;
+
+    // ✅ Sim API returns object like: { "hi": "hello", ... }
+    if (typeof res.data === "object" && !Array.isArray(res.data)) {
+      const entries = Object.entries(res.data);
+      return entries.map(([_, value]) => value); // Just the replies
     }
+
+    // ✅ fallback if it's an array
+    if (Array.isArray(res.data) && res.data.length > 0) {
+      return res.data;
+    }
+
   } catch (e) {
     // fallback to local
   }
 
+  // 📁 Local fallback
   if (fs.existsSync(LOCAL_CACHE)) {
     return JSON.parse(fs.readFileSync(LOCAL_CACHE, "utf-8"));
   }
@@ -56,25 +66,30 @@ function saveTeachData(data) {
   fs.writeFileSync(LOCAL_CACHE, JSON.stringify(data, null, 2), "utf-8");
 }
 
+// 🧠 Main logic
 export async function onCall({ message, args }) {
   ensureTeachFile();
 
   const input = args.join(" ").trim();
+  const lower = input.toLowerCase();
+
   let teachData = await getTeachData();
   if (!Array.isArray(teachData)) teachData = [];
 
-  const lower = input.toLowerCase();
-
-  // ✅ Only "bot" or "bot hi" ➜ reply random
-  if (lower === "hi" || input === "") {
+  // ✅ Just "bot" or "bot hi"
+  if (input === "" || lower === "hi") {
     if (!teachData.length) return message.reply("No data available.");
     const random = teachData[Math.floor(Math.random() * teachData.length)];
     return message.reply(random);
   }
 
-  // ➕ Save any other text
-  teachData.push(input);
-  saveTeachData(teachData);
+  // ➕ Save input to local
+  const localData = fs.existsSync(LOCAL_CACHE)
+    ? JSON.parse(fs.readFileSync(LOCAL_CACHE, "utf-8"))
+    : [];
+
+  localData.push(input);
+  saveTeachData(localData);
 
   return message.reply("✅ Saved: " + input);
 }
