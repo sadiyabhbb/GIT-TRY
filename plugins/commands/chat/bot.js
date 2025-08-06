@@ -3,14 +3,14 @@ import fs from "fs";
 
 const config = {
   name: "bot",
-  description: "Teach & Respond bot",
+  description: "Teach & Respond bot (SIM API + local)",
   usage: "bot hi | bot <your message>",
   cooldown: 3,
   permissions: [0, 1, 2],
   credits: "RIN"
 };
 
-const TEACH_API_URL = "https://raw.githubusercontent.com/MOHAMMAD-NAYAN-07/Nayan/main/api.json";
+const SIM_API = "http://65.109.80.126:20392/sim";
 const LOCAL_CACHE = "./cache/teach.json";
 
 // 🔰 Ensure file/folder with default messages
@@ -33,70 +33,59 @@ function ensureTeachFile() {
   }
 }
 
-// 📥 Read teach data (Sim API preferred)
-async function getTeachData() {
-  try {
-    const res = await axios.get(TEACH_API_URL);
-
-    // ✅ Sim API returns object like: { "hi": "hello", ... }
-    if (typeof res.data === "object" && !Array.isArray(res.data)) {
-      const entries = Object.entries(res.data);
-      return entries.map(([_, value]) => value); // Just the replies
-    }
-
-    // ✅ fallback if it's an array
-    if (Array.isArray(res.data) && res.data.length > 0) {
-      return res.data;
-    }
-
-  } catch (e) {
-    // fallback to local
-  }
-
-  // 📁 Local fallback
-  if (fs.existsSync(LOCAL_CACHE)) {
-    return JSON.parse(fs.readFileSync(LOCAL_CACHE, "utf-8"));
-  }
-
-  return [];
-}
-
-// 💾 Save to local
+// 💾 Save input to local file
 function saveTeachData(data) {
   fs.writeFileSync(LOCAL_CACHE, JSON.stringify(data, null, 2), "utf-8");
 }
 
-// 🧠 Main logic
+// 📁 Load from local cache
+function loadLocalData() {
+  if (fs.existsSync(LOCAL_CACHE)) {
+    const data = JSON.parse(fs.readFileSync(LOCAL_CACHE, "utf-8"));
+    return Array.isArray(data) ? data : [];
+  }
+  return [];
+}
+
+// 🧠 Main function
 export async function onCall({ message, args }) {
   ensureTeachFile();
 
   const input = args.join(" ").trim();
-  const lower = input.toLowerCase();
-
-  let teachData = await getTeachData();
-  if (!Array.isArray(teachData)) teachData = [];
-
-  // ✅ Filter out links (only allow text)
-  const filtered = teachData.filter(msg =>
-    typeof msg === "string" && !msg.startsWith("http")
-  );
-
-  // ✅ Just "bot" or "bot hi" ➜ reply from filtered data
-  if (input === "" || lower === "hi") {
-    if (!filtered.length) return message.reply("No valid messages available.");
-    const random = filtered[Math.floor(Math.random() * filtered.length)];
-    return message.reply(random);
+  if (!input) {
+    return message.reply("❌ Please type something after 'bot'.");
   }
 
-  // ➕ Save input to local
-  const localData = fs.existsSync(LOCAL_CACHE)
-    ? JSON.parse(fs.readFileSync(LOCAL_CACHE, "utf-8"))
-    : [];
+  try {
+    // 🔗 API call
+    const res = await axios.get(SIM_API, {
+      params: { type: "ask", ask: input }
+    });
 
-  localData.push(input);
-  saveTeachData(localData);
+    const reply = res.data;
 
-  return message.reply("✅ Saved: " + input);
+    // ✅ Valid reply
+    if (reply && typeof reply === "string" && reply.trim() !== "" && !reply.startsWith("http")) {
+      return message.reply(reply);
+    }
+
+    // ⛔ Invalid or no match
+    return message.reply("⚠️ No valid messages available.");
+
+  } catch (e) {
+    // 🌐 API failed, fallback to local
+    const localData = loadLocalData();
+    const filtered = localData.filter(
+      msg => typeof msg === "string" && !msg.startsWith("http")
+    );
+
+    if (filtered.length) {
+      const random = filtered[Math.floor(Math.random() * filtered.length)];
+      return message.reply(random);
+    } else {
+      return message.reply("❌ Error reaching SIM API and no local messages found.");
+    }
+  }
 }
 
 export default {
