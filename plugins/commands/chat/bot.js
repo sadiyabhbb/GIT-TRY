@@ -60,20 +60,19 @@ export async function onCall({ message, args }) {
   ensureTeachFile();
 
   const input = args.join(" ").trim();
-  if (!input) return message.reply("Please type something after 'bot'.");
-
   let teachData = await getTeachData();
   if (!Array.isArray(teachData)) teachData = [];
 
   const lower = input.toLowerCase();
 
-  if (lower === "hi" || lower === "") {
+  // ✅ Only "bot" or "bot hi" ➜ reply random
+  if (lower === "hi" || input === "") {
     if (!teachData.length) return message.reply("No data available.");
     const random = teachData[Math.floor(Math.random() * teachData.length)];
     return message.reply(random);
   }
 
-  // Add to local teach file
+  // ➕ Save any other text
   teachData.push(input);
   saveTeachData(teachData);
 
