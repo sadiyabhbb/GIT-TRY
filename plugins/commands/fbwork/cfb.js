@@ -40,25 +40,16 @@ function randomEmail() {
 async function createFacebookAccount(name, dob, emailOrPhone, password) {
   const browser = await puppeteer.launch({
     headless: true,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--no-first-run',
-      '--no-zygote',
-      '--single-process',
-      '--disable-gpu'
-    ],
-    defaultViewport: null
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
   });
+
+  let uid = null;
 
   try {
     const page = await browser.newPage();
-
     await page.goto('https://www.facebook.com/reg', {
       waitUntil: 'networkidle2',
-      timeout: 60000,
+      timeout: 60000
     });
 
     await page.type('input[name="firstname"]', name.split(' ')[0], { delay: 50 });
@@ -74,15 +65,19 @@ async function createFacebookAccount(name, dob, emailOrPhone, password) {
     await page.click(genderSelector);
 
     await page.click('button[name="websubmit"]');
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
     await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
 
-    // Try to extract UID from URL if redirected
+    // Try extracting UID from URL
     const url = page.url();
-    let uid = null;
     const match = url.match(/profile\.php\?id=(\d+)/);
-    if (match && match[1]) uid = match[1];
+    if (match && match[1]) {
+      uid = match[1];
+    } else {
+      // Try from cookies
+      const cookies = await page.cookies();
+      const c_user = cookies.find(c => c.name === 'c_user');
+      if (c_user) uid = c_user.value;
+    }
 
     return {
       emailOrPhone,
@@ -103,15 +98,15 @@ async function createFacebookAccount(name, dob, emailOrPhone, password) {
 
 export async function onCall({ message, args }) {
   try {
-    if (args.length < 3) return message.reply("📌 Usage: /cfb <number> - <password>");
+    if (args.length < 3) return message.reply("Usage: cfb <number> - <password>");
 
     const numberCount = parseInt(args[0]);
-    if (isNaN(numberCount) || numberCount <= 0) return message.reply("❗ Please enter a valid number of accounts to create.");
+    if (isNaN(numberCount) || numberCount <= 0) return message.reply("Please enter a valid number.");
 
-    if (args[1] !== '-') return message.reply("⚠️ Use this format: /cfb <number> - <password>");
+    if (args[1] !== '-') return message.reply("Use format: cfb <number> - <password>");
 
     const password = args.slice(2).join(' ');
-    if (!password) return message.reply("🔑 Please provide a password.");
+    if (!password) return message.reply("Please provide a password.");
 
     let results = [];
     for (let i = 0; i < numberCount; i++) {
@@ -124,7 +119,12 @@ export async function onCall({ message, args }) {
         results.push(result);
         await message.reply(
           `✅ Account ${i + 1} created:\n` +
-          `👤 Name: ${result.name}\n📧 Email: ${result.emailOrPhone}\n🔑 Password: ${result.password}\n🎂 DOB: ${result.dob.day}/${result.dob.month}/${result.dob.year}\n🆔 UID: ${result.uid}\n📨 Status: ${result.status}`
+          `👤 Name: ${result.name}\n` +
+          `📧 Email: ${result.emailOrPhone}\n` +
+          `🔑 Password: ${result.password}\n` +
+          `🎂 DOB: ${result.dob.day}/${result.dob.month}/${result.dob.year}\n` +
+          `🆔 UID: ${result.uid}\n` +
+          `📨 Status: ${result.status}`
         );
       } else {
         await message.reply(`❌ Error creating account ${i + 1}`);
@@ -132,7 +132,6 @@ export async function onCall({ message, args }) {
     }
 
     if (!results.length) return message.reply("❌ No accounts were created.");
-    await message.reply(`🎉 ✅ Created ${results.length} account(s).`);
 
   } catch (e) {
     await message.reply("❌ Error: " + e.message);
