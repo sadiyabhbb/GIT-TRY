@@ -21,8 +21,8 @@ function randomDate() {
 }
 
 function randomName() {
-  const firstNames = ["John", "Alex", "Michael", "Chris", "David", "James", "Robert", "Daniel"];
-  const lastNames = ["Smith", "Johnson", "Brown", "Williams", "Jones", "Miller", "Davis"];
+  const firstNames = ["John", "Alex", "Michael", "Chris", "David", "James", "Robert", "Daniel", "Emma", "Lily", "Sophia"];
+  const lastNames = ["Smith", "Johnson", "Brown", "Williams", "Jones", "Miller", "Davis", "Watson"];
   const first = firstNames[randomInt(0, firstNames.length - 1)];
   const last = lastNames[randomInt(0, lastNames.length - 1)];
   return `${first} ${last}`;
@@ -39,8 +39,17 @@ function randomEmail() {
 
 async function createFacebookAccount(name, dob, emailOrPhone, password) {
   const browser = await puppeteer.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
+    headless: false,
+    slowMo: 80,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-infobars',
+      '--window-position=0,0',
+      '--window-size=1280,800',
+      '--disable-extensions',
+      '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115 Safari/537.36'
+    ]
   });
 
   let uid = null;
@@ -52,10 +61,21 @@ async function createFacebookAccount(name, dob, emailOrPhone, password) {
       timeout: 60000
     });
 
-    await page.type('input[name="firstname"]', name.split(' ')[0], { delay: 50 });
-    await page.type('input[name="lastname"]', name.split(' ')[1], { delay: 50 });
-    await page.type('input[name="reg_email__"]', emailOrPhone, { delay: 50 });
-    await page.type('input[name="reg_passwd__"]', password, { delay: 50 });
+    const [first, last] = name.split(' ');
+
+    await page.type('input[name="firstname"]', first, { delay: 100 });
+    await page.type('input[name="lastname"]', last || 'Doe', { delay: 100 });
+    await page.type('input[name="reg_email__"]', emailOrPhone, { delay: 100 });
+
+    // Wait and check if Facebook adds confirm email field
+    await page.waitForTimeout(1500);
+    const confirmEmailSelector = 'input[name="reg_email_confirmation__"]';
+    const confirmEmailExists = await page.$(confirmEmailSelector);
+    if (confirmEmailExists) {
+      await page.type(confirmEmailSelector, emailOrPhone, { delay: 100 });
+    }
+
+    await page.type('input[name="reg_passwd__"]', password, { delay: 100 });
 
     await page.select('select[name="birthday_day"]', dob.day.toString());
     await page.select('select[name="birthday_month"]', dob.month.toString());
@@ -63,21 +83,14 @@ async function createFacebookAccount(name, dob, emailOrPhone, password) {
 
     const genderSelector = ['input[value="1"]', 'input[value="2"]'][Math.floor(Math.random() * 2)];
     await page.click(genderSelector);
+    await page.waitForTimeout(2000);
 
-    await page.click('button[name="websubmit"]');
-    await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
+    await page.$eval('button[name="websubmit"]', btn => btn.click());
+    await page.waitForTimeout(8000); // Wait for potential redirect or error
 
-    // Try extracting UID from URL
-    const url = page.url();
-    const match = url.match(/profile\.php\?id=(\d+)/);
-    if (match && match[1]) {
-      uid = match[1];
-    } else {
-      // Try from cookies
-      const cookies = await page.cookies();
-      const c_user = cookies.find(c => c.name === 'c_user');
-      if (c_user) uid = c_user.value;
-    }
+    const cookies = await page.cookies();
+    const c_user = cookies.find(c => c.name === 'c_user');
+    if (c_user) uid = c_user.value;
 
     return {
       emailOrPhone,
@@ -89,7 +102,7 @@ async function createFacebookAccount(name, dob, emailOrPhone, password) {
     };
 
   } catch (err) {
-    console.error('Error creating account:', err);
+    console.error('Error creating account:', err.message);
     return null;
   } finally {
     await browser.close();
@@ -109,19 +122,23 @@ export async function onCall({ message, args }) {
     if (!password) return message.reply("Please provide a password.");
 
     let results = [];
+
     for (let i = 0; i < numberCount; i++) {
       const name = randomName();
       const dob = randomDate();
       const email = randomEmail();
 
       const result = await createFacebookAccount(name, dob, email, password);
-      if (result) results.push(result);
-      else await message.reply(`❌ Error creating account ${i + 1}`);
+
+      if (result) {
+        results.push(result);
+      } else {
+        await message.reply(`❌ Error creating account ${i + 1}`);
+      }
     }
 
     if (!results.length) return message.reply("❌ No accounts were created.");
 
-    // Prepare output lines: UID<TAB>Name<TAB>Email<TAB>Password<TAB>DOB(dd/mm/yyyy)
     let outputLines = results.map(acc => {
       const dd = acc.dob.day.toString().padStart(2, '0');
       const mm = acc.dob.month.toString().padStart(2, '0');
@@ -129,10 +146,8 @@ export async function onCall({ message, args }) {
       return `${acc.uid}\t${acc.name}\t${acc.emailOrPhone}\t${acc.password}\t${dd}/${mm}/${yyyy}`;
     });
 
-    // Join all lines by newline
     let finalOutput = outputLines.join('\n');
 
-    // Send the whole as one message
     await message.reply(`✅ Created ${results.length} account(s):\n\n` + finalOutput);
 
   } catch (e) {
