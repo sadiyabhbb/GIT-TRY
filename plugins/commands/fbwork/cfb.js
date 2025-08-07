@@ -65,10 +65,6 @@ async function createFacebookAccount(name, dob, emailOrPhone, password) {
     await page.click(genderSelector);
 
     await page.click('button[name="websubmit"]');
-
-    // wait for 5 seconds instead of page.waitForTimeout
-    await new Promise(resolve => setTimeout(resolve, 5000));
-
     await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
 
     // Try extracting UID from URL
@@ -88,7 +84,7 @@ async function createFacebookAccount(name, dob, emailOrPhone, password) {
       password,
       name,
       dob,
-      uid: uid || '❓NotAvailable',
+      uid: uid || '❓ Not available',
       status: "🕓 Waiting for confirmation code"
     };
 
@@ -119,23 +115,23 @@ export async function onCall({ message, args }) {
       const email = randomEmail();
 
       const result = await createFacebookAccount(name, dob, email, password);
-      if (result) results.push(result);
-      else await message.reply(`❌ Error creating account ${i + 1}`);
+      if (result) {
+        results.push(result);
+        await message.reply(
+          `✅ Account ${i + 1} created:\n` +
+          `👤 Name: ${result.name}\n` +
+          `📧 Email: ${result.emailOrPhone}\n` +
+          `🔑 Password: ${result.password}\n` +
+          `🎂 DOB: ${result.dob.day}/${result.dob.month}/${result.dob.year}\n` +
+          `🆔 UID: ${result.uid}\n` +
+          `📨 Status: ${result.status}`
+        );
+      } else {
+        await message.reply(`❌ Error creating account ${i + 1}`);
+      }
     }
 
     if (!results.length) return message.reply("❌ No accounts were created.");
-
-    // Prepare output lines: UID<TAB>Name<TAB>Email<TAB>Password<TAB>DOB(dd/mm/yyyy)
-    let outputLines = results.map(acc => {
-      const dd = acc.dob.day.toString().padStart(2, '0');
-      const mm = acc.dob.month.toString().padStart(2, '0');
-      const yyyy = acc.dob.year;
-      return `${acc.uid}\t${acc.name}\t${acc.emailOrPhone}\t${acc.password}\t${dd}/${mm}/${yyyy}`;
-    });
-
-    let finalOutput = outputLines.join('\n');
-
-    await message.reply(`✅ Created ${results.length} account(s):\n\n` + finalOutput);
 
   } catch (e) {
     await message.reply("❌ Error: " + e.message);
