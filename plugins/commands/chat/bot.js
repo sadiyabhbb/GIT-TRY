@@ -11,7 +11,6 @@ const config = {
 };
 
 const LOCAL_CACHE = "./cache/teach.json";
-const LAST_REPLY_CACHE = "./cache/last_reply.json";
 const SIM_API_URL = "http://65.109.80.126:20392/sim";
 
 // Ensure cache folder & default messages
@@ -32,31 +31,23 @@ function ensureCache() {
   if (!fs.existsSync(LOCAL_CACHE)) {
     fs.writeFileSync(LOCAL_CACHE, JSON.stringify(defaultData, null, 2), "utf-8");
   }
-
-  if (!fs.existsSync(LAST_REPLY_CACHE)) {
-    fs.writeFileSync(LAST_REPLY_CACHE, JSON.stringify({ last: "" }), "utf-8");
-  }
-}
-
-function getLastReply() {
-  if (!fs.existsSync(LAST_REPLY_CACHE)) return "";
-  const data = JSON.parse(fs.readFileSync(LAST_REPLY_CACHE, "utf-8"));
-  return data.last || "";
-}
-
-function setLastReply(text) {
-  fs.writeFileSync(LAST_REPLY_CACHE, JSON.stringify({ last: text }, null, 2), "utf-8");
 }
 
 export async function onCall({ message, args }) {
   ensureCache();
 
-  const input = args.join(" ").trim();
-  const lower = input.toLowerCase();
-  const lastBotReply = getLastReply();
+  const inputText = args.join(" ").trim();
+  const replyMessage = message?.reply_message?.text?.trim();
 
-  // ✅ bot or bot hi = random from local
-  if (lower === "hi" || input === "") {
+  let askText = inputText || ""; // default to what user wrote
+
+  // ✅ যদি কেউ bot reply এর উপরে উত্তর দেয়
+  if (!askText && replyMessage) {
+    askText = replyMessage;
+  }
+
+  // ✅ যদি user শুধু 'bot' বা 'bot hi' দেয়, random
+  if (askText.toLowerCase() === "hi" || askText === "") {
     const data = JSON.parse(fs.readFileSync(LOCAL_CACHE, "utf-8"));
     const filtered = data.filter(msg =>
       typeof msg === "string" && !msg.startsWith("http")
@@ -64,25 +55,21 @@ export async function onCall({ message, args }) {
 
     if (!filtered.length) return message.reply("⚠️ No valid messages available.");
     const random = filtered[Math.floor(Math.random() * filtered.length)];
-    setLastReply(random);
     return message.reply(random);
   }
 
-  // 🔁 User replied same as last bot message → use that as new input
-  const isLoop = input === lastBotReply;
-
+  // 🔁 Call SIM API
   try {
     const res = await axios.get(SIM_API_URL, {
-      params: { type: "ask", ask: isLoop ? input : input }
+      params: { type: "ask", ask: askText }
     });
 
     if (res.data && res.data.data && res.data.data.msg) {
       const reply = res.data.data.msg;
-      setLastReply(reply);
       return message.reply(reply);
     }
   } catch (e) {
-    // ignore error
+    return message.reply("⚠️ API error. Try again.");
   }
 
   return message.reply("⚠️ Sorry, no reply found.");
