@@ -11,7 +11,6 @@ const config = {
 };
 
 const LOCAL_CACHE = "./cache/teach.json";
-const LAST_REPLIES_FILE = "./cache/last_bot_replies.json";
 const SIM_API_URL = "http://65.109.80.126:20392/sim";
 
 function ensureCache() {
@@ -31,29 +30,6 @@ function ensureCache() {
   if (!fs.existsSync(LOCAL_CACHE)) {
     fs.writeFileSync(LOCAL_CACHE, JSON.stringify(defaultData, null, 2), "utf-8");
   }
-
-  if (!fs.existsSync(LAST_REPLIES_FILE)) {
-    fs.writeFileSync(LAST_REPLIES_FILE, JSON.stringify([], null, 2), "utf-8");
-  }
-}
-
-function saveLastReply(text) {
-  let replies = [];
-  if (fs.existsSync(LAST_REPLIES_FILE)) {
-    replies = JSON.parse(fs.readFileSync(LAST_REPLIES_FILE, "utf-8"));
-  }
-
-  // Limit to last 10 replies max
-  if (replies.length >= 10) replies.shift();
-  replies.push(text);
-
-  fs.writeFileSync(LAST_REPLIES_FILE, JSON.stringify(replies, null, 2), "utf-8");
-}
-
-function wasBotLastReply(text) {
-  if (!fs.existsSync(LAST_REPLIES_FILE)) return false;
-  const replies = JSON.parse(fs.readFileSync(LAST_REPLIES_FILE, "utf-8"));
-  return replies.includes(text);
 }
 
 export async function onCall({ message, args }) {
@@ -61,16 +37,15 @@ export async function onCall({ message, args }) {
 
   const inputText = args.join(" ").trim();
   const replyText = message?.reply_message?.text?.trim();
-  let finalAskText = "";
+  let askText = inputText;
 
-  if (inputText) {
-    finalAskText = inputText;
-  } else if (replyText && wasBotLastReply(replyText)) {
-    finalAskText = replyText;
+  // ✅ যদি কিছু না লেখে এবং কিছুর উপরে reply করে
+  if (!askText && replyText) {
+    askText = replyText;
   }
 
-  // bot or hi → random msg
-  if (finalAskText.toLowerCase() === "hi" || finalAskText === "") {
+  // ✅ যদি 'hi' বা 'bot' বা খালি কিছু লিখে
+  if (askText.toLowerCase() === "hi" || askText === "") {
     const data = JSON.parse(fs.readFileSync(LOCAL_CACHE, "utf-8"));
     const filtered = data.filter(msg =>
       typeof msg === "string" && !msg.startsWith("http")
@@ -78,20 +53,17 @@ export async function onCall({ message, args }) {
 
     if (!filtered.length) return message.reply("⚠️ No valid messages available.");
     const random = filtered[Math.floor(Math.random() * filtered.length)];
-    saveLastReply(random);
     return message.reply(random);
   }
 
-  // Ask SIM API
+  // 🔁 SIM API তে পাঠাও
   try {
     const res = await axios.get(SIM_API_URL, {
-      params: { type: "ask", ask: finalAskText }
+      params: { type: "ask", ask: askText }
     });
 
     if (res.data && res.data.data && res.data.data.msg) {
-      const reply = res.data.data.msg;
-      saveLastReply(reply);
-      return message.reply(reply);
+      return message.reply(res.data.data.msg);
     }
   } catch (e) {
     return message.reply("⚠️ API error. Try again.");
