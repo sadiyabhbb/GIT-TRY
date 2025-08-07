@@ -40,7 +40,7 @@ function randomEmail() {
 
 async function createFacebookAccount(name, dob, emailOrPhone, password) {
   const browser = await puppeteer.launch({
-    headless: true, // headless:true দিবে যাতে কোন GUI লাগে না
+    headless: true,
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
@@ -48,7 +48,7 @@ async function createFacebookAccount(name, dob, emailOrPhone, password) {
       '--disable-accelerated-2d-canvas',
       '--no-first-run',
       '--no-zygote',
-      '--single-process', // বিশেষ ক্ষেত্রে দরকার হতে পারে
+      '--single-process',
       '--disable-gpu'
     ],
     defaultViewport: null
@@ -107,6 +107,7 @@ export async function onCall({ message, args }) {
     if (!password) return message.reply("Please provide a password.");
 
     let results = [];
+
     for (let i = 0; i < numberCount; i++) {
       const name = randomName();
       const dob = randomDate();
@@ -119,13 +120,22 @@ export async function onCall({ message, args }) {
 
     if (!results.length) return message.reply("❌ No accounts were created.");
 
-    const lines = results.map(r => `Email/Phone: ${r.emailOrPhone}\nPassword: ${r.password}\nName: ${r.name}\nDOB: ${r.dob.day}/${r.dob.month}/${r.dob.year}\nStatus: ${r.status}\n\n`);
+    const lines = results.map(r =>
+      `Email/Phone: ${r.emailOrPhone}\nPassword: ${r.password}\nName: ${r.name}\nDOB: ${r.dob.day}/${r.dob.month}/${r.dob.year}\nStatus: ${r.status}\n\n`
+    );
+
     const filename = `cfb_accounts_${Date.now()}.txt`;
     fs.writeFileSync(filename, lines.join(''), 'utf-8');
 
+    console.log(`File saved: ${filename}`);
+
     await message.reply(`✅ Created ${results.length} accounts. Credentials sent in file:`, { files: [filename] });
 
+    // Optional: delete file after sending
+    // fs.unlinkSync(filename);
+
   } catch (e) {
+    console.error('Error in onCall:', e);
     await message.reply("❌ Error: " + e.message);
   }
 }
