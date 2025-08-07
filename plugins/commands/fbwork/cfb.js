@@ -1,8 +1,9 @@
 import puppeteer from 'puppeteer';
+import fetch from 'node-fetch';
 
 const config = {
   name: "cfb",
-  description: "Create Facebook accounts with random data and given password",
+  description: "Create Facebook accounts with random info and provided password",
   usage: "cfb <number> - <password>",
   cooldown: 5,
   permissions: [0, 1, 2],
@@ -37,7 +38,17 @@ function randomEmail() {
   return email + '@gmail.com';
 }
 
-async function createFacebookAccount(name, dob, emailOrPhone, password) {
+async function getUIDFromUsername(usernameOrEmail) {
+  try {
+    const res = await fetch(`https://graph.facebook.com/v17.0/${usernameOrEmail}?fields=id&access_token=350685531728|62f8ce9f74b12f84c123cc23437a4a32`);
+    const json = await res.json();
+    return json.id || 'Not available';
+  } catch {
+    return 'Not available';
+  }
+}
+
+async function createFacebookAccount(name, dob, email, password) {
   const browser = await puppeteer.launch({
     headless: true,
     args: [
@@ -49,44 +60,39 @@ async function createFacebookAccount(name, dob, emailOrPhone, password) {
       '--no-zygote',
       '--single-process',
       '--disable-gpu'
-    ],
-    defaultViewport: null
+    ]
   });
 
   try {
     const page = await browser.newPage();
+    await page.goto('https://www.facebook.com/reg', { waitUntil: 'networkidle2', timeout: 60000 });
 
-    await page.goto('https://www.facebook.com/reg', {
-      waitUntil: 'networkidle2',
-      timeout: 60000,
-    });
-
-    await page.type('input[name="firstname"]', name.split(' ')[0], { delay: 50 });
-    await page.type('input[name="lastname"]', name.split(' ')[1], { delay: 50 });
-    await page.type('input[name="reg_email__"]', emailOrPhone, { delay: 50 });
-    await page.type('input[name="reg_passwd__"]', password, { delay: 50 });
-
+    await page.type('input[name="firstname"]', name.split(' ')[0]);
+    await page.type('input[name="lastname"]', name.split(' ')[1]);
+    await page.type('input[name="reg_email__"]', email);
+    await page.type('input[name="reg_passwd__"]', password);
     await page.select('select[name="birthday_day"]', dob.day.toString());
     await page.select('select[name="birthday_month"]', dob.month.toString());
     await page.select('select[name="birthday_year"]', dob.year.toString());
 
     const genderSelector = ['input[value="1"]', 'input[value="2"]'][Math.floor(Math.random() * 2)];
     await page.click(genderSelector);
-
     await page.click('button[name="websubmit"]');
+    await page.waitForTimeout(5000); // wait for next step (code input)
 
-    await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
+    const uid = await getUIDFromUsername(email.split("@")[0]);
 
     return {
-      emailOrPhone,
+      email,
       password,
       name,
       dob,
+      uid,
       status: "Waiting for confirmation code"
     };
 
   } catch (err) {
-    console.error('Error creating account:', err);
+    console.error("Error:", err);
     return null;
   } finally {
     await browser.close();
@@ -94,50 +100,34 @@ async function createFacebookAccount(name, dob, emailOrPhone, password) {
 }
 
 export async function onCall({ message, args }) {
-  try {
-    if (args.length < 3) return message.reply("Usage: cfb <number> - <password>");
+  if (args.length < 3) return message.reply("Usage: /cfb <number> - <password>");
 
-    const numberCount = parseInt(args[0]);
-    if (isNaN(numberCount) || numberCount <= 0) return message.reply("Please enter a valid number of accounts to create.");
+  const number = parseInt(args[0]);
+  if (isNaN(number) || number <= 0) return message.reply("Please enter a valid number of accounts.");
 
-    if (args[1] !== '-') return message.reply("Use this format: cfb <number> - <password>");
+  if (args[1] !== '-') return message.reply("Use correct format: /cfb <number> - <password>");
 
-    const password = args.slice(2).join(' ');
-    if (!password) return message.reply("Please provide a password.");
+  const password = args.slice(2).join(' ');
+  if (!password) return message.reply("Please provide a password.");
 
-    let results = [];
-    for (let i = 0; i < numberCount; i++) {
-      const name = randomName();
-      const dob = randomDate();
-      const email = randomEmail();
+  await message.reply("⏳ Creating accounts, please wait...");
 
-      const result = await createFacebookAccount(name, dob, email, password);
-      if (result) results.push(result);
-      else await message.reply(`❌ Error creating account ${i + 1}`);
+  let allText = '';
+  for (let i = 0; i < number; i++) {
+    const name = randomName();
+    const dob = randomDate();
+    const email = randomEmail();
+
+    const result = await createFacebookAccount(name, dob, email, password);
+    if (result) {
+      allText += `🔐 Account ${i + 1}:\n`;
+      allText += `👤 Name: ${result.name}\n📧 Email: ${result.email}\n🔑 Password: ${result.password}\n📅 DOB: ${result.dob.day}/${result.dob.month}/${result.dob.year}\n🆔 UID: ${result.uid}\n📩 Status: ${result.status}\n\n`;
+    } else {
+      allText += `❌ Error creating account ${i + 1}\n\n`;
     }
-
-    if (!results.length) return message.reply("❌ No accounts were created.");
-
-    // বড় একটা টেক্সট মেসেজ বানানো
-    let replyText = `✅ Created ${results.length} accounts:\n\n`;
-    for (let i = 0; i < results.length; i++) {
-      const r = results[i];
-      replyText +=
-        `Account ${i + 1}:\n` +
-        `Email/Phone: ${r.emailOrPhone}\n` +
-        `Password: ${r.password}\n` +
-        `Name: ${r.name}\n` +
-        `DOB: ${r.dob.day}/${r.dob.month}/${r.dob.year}\n` +
-        `Status: ${r.status}\n\n`;
-    }
-
-    // অনেক বড় হলে কিছু টুকরা পাঠাতে হবে, বা truncate করে দিতে হবে (Optional)
-
-    await message.reply(replyText);
-
-  } catch (e) {
-    await message.reply("❌ Error: " + e.message);
   }
+
+  await message.reply(`✅ Created ${number} account(s):\n\n${allText}`);
 }
 
 export default {
