@@ -21,8 +21,8 @@ function randomDate() {
 }
 
 function randomName() {
-  const firstNames = ["John", "Alex", "Michael", "Chris", "David", "James", "Robert", "Daniel"];
-  const lastNames = ["Smith", "Johnson", "Brown", "Williams", "Jones", "Miller", "Davis"];
+  const firstNames = ["John", "Alex", "Michael", "Chris", "David", "James", "Robert", "Daniel", "Emma", "Sophia", "Olivia", "Emily"];
+  const lastNames = ["Smith", "Johnson", "Brown", "Williams", "Jones", "Miller", "Davis", "Taylor", "Clark", "Watson"];
   const first = firstNames[randomInt(0, firstNames.length - 1)];
   const last = lastNames[randomInt(0, lastNames.length - 1)];
   return `${first} ${last}`;
@@ -31,15 +31,19 @@ function randomName() {
 function randomEmail() {
   const chars = 'abcdefghijklmnopqrstuvwxyz1234567890';
   let email = '';
-  for (let i = 0; i < 7; i++) {
+  for (let i = 0; i < 8; i++) {
     email += chars.charAt(randomInt(0, chars.length - 1));
   }
   return email + '@gmail.com';
 }
 
+async function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function createFacebookAccount(name, dob, emailOrPhone, password) {
   const browser = await puppeteer.launch({
-    headless: "new", // <-- Headless mode to avoid X11 error
+    headless: false, // Simulate human behavior
     args: ['--no-sandbox', '--disable-setuid-sandbox']
   });
 
@@ -55,6 +59,8 @@ async function createFacebookAccount(name, dob, emailOrPhone, password) {
     await page.type('input[name="firstname"]', name.split(' ')[0], { delay: 50 });
     await page.type('input[name="lastname"]', name.split(' ')[1], { delay: 50 });
     await page.type('input[name="reg_email__"]', emailOrPhone, { delay: 50 });
+    await wait(1000); // Wait for confirm email field to appear
+    await page.type('input[name="reg_email_confirmation__"]', emailOrPhone, { delay: 50 });
     await page.type('input[name="reg_passwd__"]', password, { delay: 50 });
 
     await page.select('select[name="birthday_day"]', dob.day.toString());
@@ -64,14 +70,19 @@ async function createFacebookAccount(name, dob, emailOrPhone, password) {
     const genderSelector = ['input[value="1"]', 'input[value="2"]'][Math.floor(Math.random() * 2)];
     await page.click(genderSelector);
 
+    await wait(1000);
     await page.click('button[name="websubmit"]');
-    await page.waitForTimeout(5000); // Give time for response page to load
 
-    // Try extracting UID
-    const cookies = await page.cookies();
-    const c_user = cookies.find(c => c.name === 'c_user');
-    if (c_user) {
-      uid = c_user.value;
+    await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
+
+    const url = page.url();
+    const match = url.match(/profile\.php\?id=(\d+)/);
+    if (match && match[1]) {
+      uid = match[1];
+    } else {
+      const cookies = await page.cookies();
+      const c_user = cookies.find(c => c.name === 'c_user');
+      if (c_user) uid = c_user.value;
     }
 
     return {
@@ -80,11 +91,10 @@ async function createFacebookAccount(name, dob, emailOrPhone, password) {
       name,
       dob,
       uid: uid || '❓NotAvailable',
-      status: "🕓 Waiting for confirmation code"
     };
 
   } catch (err) {
-    console.error('Error creating account:', err.message);
+    console.error('Error creating account:', err);
     return null;
   } finally {
     await browser.close();
@@ -111,16 +121,13 @@ export async function onCall({ message, args }) {
       const email = randomEmail();
 
       const result = await createFacebookAccount(name, dob, email, password);
-      if (result) {
-        results.push(result);
-      } else {
-        await message.reply(`❌ Error creating account ${i + 1}`);
-      }
+      if (result) results.push(result);
+      else await message.reply(`❌ Error creating account ${i + 1}`);
     }
 
     if (!results.length) return message.reply("❌ No accounts were created.");
 
-    // Prepare final message in sheet-like format
+    // Format output
     let outputLines = results.map(acc => {
       const dd = acc.dob.day.toString().padStart(2, '0');
       const mm = acc.dob.month.toString().padStart(2, '0');
@@ -129,7 +136,6 @@ export async function onCall({ message, args }) {
     });
 
     const finalOutput = outputLines.join('\n');
-
     await message.reply(`✅ Created ${results.length} account(s):\n\n` + finalOutput);
 
   } catch (e) {
