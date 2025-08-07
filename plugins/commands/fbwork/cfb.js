@@ -1,5 +1,4 @@
 import puppeteer from 'puppeteer';
-import fs from 'fs';
 
 const config = {
   name: "cfb",
@@ -107,7 +106,6 @@ export async function onCall({ message, args }) {
     if (!password) return message.reply("Please provide a password.");
 
     let results = [];
-
     for (let i = 0; i < numberCount; i++) {
       const name = randomName();
       const dob = randomDate();
@@ -120,22 +118,24 @@ export async function onCall({ message, args }) {
 
     if (!results.length) return message.reply("❌ No accounts were created.");
 
-    const lines = results.map(r =>
-      `Email/Phone: ${r.emailOrPhone}\nPassword: ${r.password}\nName: ${r.name}\nDOB: ${r.dob.day}/${r.dob.month}/${r.dob.year}\nStatus: ${r.status}\n\n`
-    );
+    // বড় একটা টেক্সট মেসেজ বানানো
+    let replyText = `✅ Created ${results.length} accounts:\n\n`;
+    for (let i = 0; i < results.length; i++) {
+      const r = results[i];
+      replyText +=
+        `Account ${i + 1}:\n` +
+        `Email/Phone: ${r.emailOrPhone}\n` +
+        `Password: ${r.password}\n` +
+        `Name: ${r.name}\n` +
+        `DOB: ${r.dob.day}/${r.dob.month}/${r.dob.year}\n` +
+        `Status: ${r.status}\n\n`;
+    }
 
-    const filename = `cfb_accounts_${Date.now()}.txt`;
-    fs.writeFileSync(filename, lines.join(''), 'utf-8');
+    // অনেক বড় হলে কিছু টুকরা পাঠাতে হবে, বা truncate করে দিতে হবে (Optional)
 
-    console.log(`File saved: ${filename}`);
-
-    await message.reply(`✅ Created ${results.length} accounts. Credentials sent in file:`, { files: [filename] });
-
-    // Optional: delete file after sending
-    // fs.unlinkSync(filename);
+    await message.reply(replyText);
 
   } catch (e) {
-    console.error('Error in onCall:', e);
     await message.reply("❌ Error: " + e.message);
   }
 }
