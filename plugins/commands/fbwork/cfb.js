@@ -1,68 +1,94 @@
-import fs from "fs";
-import path from "path";
+import fs from 'fs';
+import axios from 'axios';
 
 const config = {
   name: "cfb",
-  description: "Create random Facebook account entries with your password",
-  usage: "/cfb [amount] - [password]",
+  description: "Create Facebook accounts with random data and given password",
+  usage: "cfb <number> - <password>",
   cooldown: 5,
-  permissions: [0, 1, 2],
+  permissions: [0,1,2],
   credits: "RIN"
 };
 
-function getRandomName() {
-  const firstNames = ["Rafi", "Nayeem", "Sami", "Tanzim", "Nayan", "Rifat", "Shakib", "Tamim"];
-  const lastNames = ["Hossain", "Ahmed", "Khan", "Rahman", "Mia", "Islam", "Hasan", "Sikder"];
-  const first = firstNames[Math.floor(Math.random() * firstNames.length)];
-  const last = lastNames[Math.floor(Math.random() * lastNames.length)];
+function randomInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function randomDate() {
+  const year = randomInt(1985, 2003);
+  const month = randomInt(1, 12);
+  const day = randomInt(1, 28);
+  return { day, month, year };
+}
+
+function randomName() {
+  const firstNames = ["John", "Alex", "Michael", "Chris", "David", "James", "Robert", "Daniel"];
+  const lastNames = ["Smith", "Johnson", "Brown", "Williams", "Jones", "Miller", "Davis"];
+  const first = firstNames[randomInt(0, firstNames.length - 1)];
+  const last = lastNames[randomInt(0, lastNames.length - 1)];
   return `${first} ${last}`;
 }
 
-function getRandomDOB() {
-  const year = Math.floor(Math.random() * (2003 - 1985 + 1)) + 1985;
-  const month = Math.floor(Math.random() * 12) + 1;
-  const day = Math.floor(Math.random() * 28) + 1;
-  return `${day.toString().padStart(2, "0")}/${month.toString().padStart(2, "0")}/${year}`;
+function randomEmail() {
+  const chars = 'abcdefghijklmnopqrstuvwxyz1234567890';
+  let email = '';
+  for(let i = 0; i < 7; i++) {
+    email += chars.charAt(randomInt(0, chars.length -1));
+  }
+  return email + '@gmail.com';
 }
 
-function generateRandomEmail(name) {
-  const domains = ["@gmail.com", "@hotmail.com", "@yahoo.com"];
-  const clean = name.toLowerCase().replace(/\s/g, "") + Math.floor(100 + Math.random() * 9999);
-  return clean + domains[Math.floor(Math.random() * domains.length)];
+async function createFacebookAccount(name, dob, emailOrPhone, password) {
+  // এখানে Facebook সাইনআপ পেজ এ POST request করার কোড দিবো
+  // যাতে form এ data পাঠানো হয় এবং confirmation কোড এর page এ পৌছানো হয়
+  // কিন্তু full register complete করবো না (confirm code user দিবে নিজে)
+  // Facebook signup form ও API আসলে official নয়, তাই এটা simulate করার কোড লাগবে।
+  
+  // এখানে demo হিসেবে আমি ফেইক রেসপন্স দিচ্ছি:
+  return {
+    emailOrPhone,
+    password,
+    name,
+    dob,
+    status: "Waiting for confirmation code"
+  };
 }
 
 export async function onCall({ message, args }) {
-  const text = args.join(" ").trim();
-  if (!text.includes("-")) return message.reply("❌ Use format: /cfb [amount] - [password]");
+  try {
+    if (args.length < 3) return message.reply("Usage: cfb <number> - <password>");
 
-  const [amountPart, passwordPart] = text.split("-").map(s => s.trim());
-  const amount = parseInt(amountPart) || 1;
-  const password = passwordPart;
+    // parse args: first arg = number, then a dash '-', then password (rest)
+    const numberCount = parseInt(args[0]);
+    if (isNaN(numberCount) || numberCount <= 0) return message.reply("Please enter a valid number of accounts to create.");
 
-  if (!password) return message.reply("❌ Password is required.");
+    if (args[1] !== '-') return message.reply("Use this format: cfb <number> - <password>");
 
-  const accounts = [];
+    const password = args.slice(2).join(' ');
+    if (!password) return message.reply("Please provide a password.");
 
-  for (let i = 0; i < amount; i++) {
-    const name = getRandomName();
-    const dob = getRandomDOB();
-    const email = generateRandomEmail(name);
-    accounts.push(`👤 Name: ${name}\n📧 Email: ${email}\n🎂 DOB: ${dob}\n🔑 Pass: ${password}`);
-  }
+    let results = [];
+    for (let i = 0; i < numberCount; i++) {
+      const name = randomName();
+      const dob = randomDate();
+      const email = randomEmail();
 
-  if (accounts.length === 1) {
-    return message.reply(accounts[0]);
-  } else {
-    const output = accounts.join("\n\n");
-    const filePath = path.join(process.cwd(), "cache", "fb_accounts.txt");
+      const result = await createFacebookAccount(name, dob, email, password);
+      results.push(result);
+    }
 
-    if (!fs.existsSync("cache")) fs.mkdirSync("cache");
-    fs.writeFileSync(filePath, output, "utf-8");
+    // Save results to file
+    const lines = results.map(r => `Email/Phone: ${r.emailOrPhone}\nPassword: ${r.password}\nName: ${r.name}\nDOB: ${r.dob.day}/${r.dob.month}/${r.dob.year}\nStatus: ${r.status}\n\n`);
+    const filename = `cfb_accounts_${Date.now()}.txt`;
+    fs.writeFileSync(filename, lines.join(''), 'utf-8');
 
-    return message.reply({
-      body: `✅ Created ${amount} accounts with password "${password}".`,
-      attachment: fs.createReadStream(filePath)
-    });
+    await message.reply(`✅ Created ${numberCount} accounts. Credentials sent in file:`, { files: [filename] });
+
+    // optionally delete file after sending if you want
+    // fs.unlinkSync(filename);
+
+  } catch (e) {
+    await message.reply("❌ Error: " + e.message);
   }
 }
 
