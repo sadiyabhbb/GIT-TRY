@@ -1,9 +1,8 @@
 import puppeteer from 'puppeteer';
-import fetch from 'node-fetch';
 
 const config = {
   name: "cfb",
-  description: "Create Facebook accounts with random info and provided password",
+  description: "Create Facebook accounts with random data and given password",
   usage: "cfb <number> - <password>",
   cooldown: 5,
   permissions: [0, 1, 2],
@@ -38,17 +37,7 @@ function randomEmail() {
   return email + '@gmail.com';
 }
 
-async function getUIDFromUsername(usernameOrEmail) {
-  try {
-    const res = await fetch(`https://graph.facebook.com/v17.0/${usernameOrEmail}?fields=id&access_token=350685531728|62f8ce9f74b12f84c123cc23437a4a32`);
-    const json = await res.json();
-    return json.id || 'Not available';
-  } catch {
-    return 'Not available';
-  }
-}
-
-async function createFacebookAccount(name, dob, email, password) {
+async function createFacebookAccount(name, dob, emailOrPhone, password) {
   const browser = await puppeteer.launch({
     headless: true,
     args: [
@@ -60,39 +49,52 @@ async function createFacebookAccount(name, dob, email, password) {
       '--no-zygote',
       '--single-process',
       '--disable-gpu'
-    ]
+    ],
+    defaultViewport: null
   });
 
   try {
     const page = await browser.newPage();
-    await page.goto('https://www.facebook.com/reg', { waitUntil: 'networkidle2', timeout: 60000 });
 
-    await page.type('input[name="firstname"]', name.split(' ')[0]);
-    await page.type('input[name="lastname"]', name.split(' ')[1]);
-    await page.type('input[name="reg_email__"]', email);
-    await page.type('input[name="reg_passwd__"]', password);
+    await page.goto('https://www.facebook.com/reg', {
+      waitUntil: 'networkidle2',
+      timeout: 60000,
+    });
+
+    await page.type('input[name="firstname"]', name.split(' ')[0], { delay: 50 });
+    await page.type('input[name="lastname"]', name.split(' ')[1], { delay: 50 });
+    await page.type('input[name="reg_email__"]', emailOrPhone, { delay: 50 });
+    await page.type('input[name="reg_passwd__"]', password, { delay: 50 });
+
     await page.select('select[name="birthday_day"]', dob.day.toString());
     await page.select('select[name="birthday_month"]', dob.month.toString());
     await page.select('select[name="birthday_year"]', dob.year.toString());
 
     const genderSelector = ['input[value="1"]', 'input[value="2"]'][Math.floor(Math.random() * 2)];
     await page.click(genderSelector);
-    await page.click('button[name="websubmit"]');
-    await page.waitForTimeout(5000); // wait for next step (code input)
 
-    const uid = await getUIDFromUsername(email.split("@")[0]);
+    await page.click('button[name="websubmit"]');
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
+
+    // Try to extract UID from URL if redirected
+    const url = page.url();
+    let uid = null;
+    const match = url.match(/profile\.php\?id=(\d+)/);
+    if (match && match[1]) uid = match[1];
 
     return {
-      email,
+      emailOrPhone,
       password,
       name,
       dob,
-      uid,
-      status: "Waiting for confirmation code"
+      uid: uid || '❓ Not available',
+      status: "🕓 Waiting for confirmation code"
     };
 
   } catch (err) {
-    console.error("Error:", err);
+    console.error('Error creating account:', err);
     return null;
   } finally {
     await browser.close();
@@ -100,34 +102,41 @@ async function createFacebookAccount(name, dob, email, password) {
 }
 
 export async function onCall({ message, args }) {
-  if (args.length < 3) return message.reply("Usage: /cfb <number> - <password>");
+  try {
+    if (args.length < 3) return message.reply("📌 Usage: /cfb <number> - <password>");
 
-  const number = parseInt(args[0]);
-  if (isNaN(number) || number <= 0) return message.reply("Please enter a valid number of accounts.");
+    const numberCount = parseInt(args[0]);
+    if (isNaN(numberCount) || numberCount <= 0) return message.reply("❗ Please enter a valid number of accounts to create.");
 
-  if (args[1] !== '-') return message.reply("Use correct format: /cfb <number> - <password>");
+    if (args[1] !== '-') return message.reply("⚠️ Use this format: /cfb <number> - <password>");
 
-  const password = args.slice(2).join(' ');
-  if (!password) return message.reply("Please provide a password.");
+    const password = args.slice(2).join(' ');
+    if (!password) return message.reply("🔑 Please provide a password.");
 
-  await message.reply("⏳ Creating accounts, please wait...");
+    let results = [];
+    for (let i = 0; i < numberCount; i++) {
+      const name = randomName();
+      const dob = randomDate();
+      const email = randomEmail();
 
-  let allText = '';
-  for (let i = 0; i < number; i++) {
-    const name = randomName();
-    const dob = randomDate();
-    const email = randomEmail();
-
-    const result = await createFacebookAccount(name, dob, email, password);
-    if (result) {
-      allText += `🔐 Account ${i + 1}:\n`;
-      allText += `👤 Name: ${result.name}\n📧 Email: ${result.email}\n🔑 Password: ${result.password}\n📅 DOB: ${result.dob.day}/${result.dob.month}/${result.dob.year}\n🆔 UID: ${result.uid}\n📩 Status: ${result.status}\n\n`;
-    } else {
-      allText += `❌ Error creating account ${i + 1}\n\n`;
+      const result = await createFacebookAccount(name, dob, email, password);
+      if (result) {
+        results.push(result);
+        await message.reply(
+          `✅ Account ${i + 1} created:\n` +
+          `👤 Name: ${result.name}\n📧 Email: ${result.emailOrPhone}\n🔑 Password: ${result.password}\n🎂 DOB: ${result.dob.day}/${result.dob.month}/${result.dob.year}\n🆔 UID: ${result.uid}\n📨 Status: ${result.status}`
+        );
+      } else {
+        await message.reply(`❌ Error creating account ${i + 1}`);
+      }
     }
-  }
 
-  await message.reply(`✅ Created ${number} account(s):\n\n${allText}`);
+    if (!results.length) return message.reply("❌ No accounts were created.");
+    await message.reply(`🎉 ✅ Created ${results.length} account(s).`);
+
+  } catch (e) {
+    await message.reply("❌ Error: " + e.message);
+  }
 }
 
 export default {
