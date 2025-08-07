@@ -39,14 +39,15 @@ export async function onCall({ message, args }) {
   const inputText = args.join(" ").trim();
   const replyMessage = message?.reply_message?.text?.trim();
 
-  let askText = inputText || ""; // default to what user wrote
+  let askText = "";
 
-  // ✅ যদি কেউ bot reply এর উপরে উত্তর দেয়
-  if (!askText && replyMessage) {
+  if (inputText) {
+    askText = inputText;
+  } else if (replyMessage) {
     askText = replyMessage;
   }
 
-  // ✅ যদি user শুধু 'bot' বা 'bot hi' দেয়, random
+  // ✅ যদি bot বা hi হয় — random msg দাও
   if (askText.toLowerCase() === "hi" || askText === "") {
     const data = JSON.parse(fs.readFileSync(LOCAL_CACHE, "utf-8"));
     const filtered = data.filter(msg =>
@@ -58,15 +59,14 @@ export async function onCall({ message, args }) {
     return message.reply(random);
   }
 
-  // 🔁 Call SIM API
+  // 🔁 SIM API Call
   try {
     const res = await axios.get(SIM_API_URL, {
       params: { type: "ask", ask: askText }
     });
 
     if (res.data && res.data.data && res.data.data.msg) {
-      const reply = res.data.data.msg;
-      return message.reply(reply);
+      return message.reply(res.data.data.msg);
     }
   } catch (e) {
     return message.reply("⚠️ API error. Try again.");
