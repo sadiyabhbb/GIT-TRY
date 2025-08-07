@@ -1,22 +1,42 @@
-import puppeteer from 'puppeteer-extra';
-import StealthPlugin from 'puppeteer-extra-plugin-stealth';
-import randomUseragent from 'random-useragent';
-
-puppeteer.use(StealthPlugin());
+import puppeteer from 'puppeteer';
 
 const config = {
   name: "ck",
-  description: "Create Facebook accounts safely with realistic behavior",
+  description: "Create Facebook accounts with human-like automation (no extra deps)",
   usage: "cfb <number> - <password>",
   cooldown: 5,
   permissions: [0, 1, 2],
   credits: "RIN"
 };
 
+function delay(ms) {
+  return new Promise(res => setTimeout(res, ms));
+}
+
+// Simple linear mouse movement simulation
+async function humanMouseMove(page, start, end, steps = 25) {
+  const xStep = (end.x - start.x) / steps;
+  const yStep = (end.y - start.y) / steps;
+  for (let i = 0; i <= steps; i++) {
+    await page.mouse.move(Math.round(start.x + xStep * i), Math.round(start.y + yStep * i));
+    await delay(15 + Math.random() * 25);
+  }
+}
+
+// Human-like typing with delay per character
+async function typeLikeHuman(page, selector, text) {
+  for (const char of text) {
+    await page.type(selector, char);
+    await delay(80 + Math.random() * 120);
+  }
+}
+
+// Random int helper
 function randomInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+// Random date generator
 function randomDate() {
   const year = randomInt(1985, 2003);
   const month = randomInt(1, 12);
@@ -24,6 +44,7 @@ function randomDate() {
   return { day, month, year };
 }
 
+// Random name generator
 function randomName() {
   const firstNames = ["John", "Alex", "Michael", "Chris", "David", "James", "Robert", "Daniel"];
   const lastNames = ["Smith", "Johnson", "Brown", "Williams", "Jones", "Miller", "Davis"];
@@ -32,6 +53,7 @@ function randomName() {
   return `${first} ${last}`;
 }
 
+// Email with fixed prefix + random string
 function randomEmail(prefix = "likhon420x") {
   const chars = 'abcdefghijklmnopqrstuvwxyz1234567890';
   let rand = '';
@@ -41,59 +63,72 @@ function randomEmail(prefix = "likhon420x") {
   return `${prefix}${rand}@gmail.com`;
 }
 
-async function simulateHumanMouseMovement(page) {
-  const width = 1920;
-  const height = 1080;
-  for (let i = 0; i < 10; i++) {
-    const x = randomInt(0, width);
-    const y = randomInt(0, height);
-    await page.mouse.move(x, y, { steps: randomInt(10, 25) });
-    await page.waitForTimeout(randomInt(100, 300));
-  }
-}
-
-async function createFacebookAccount(name, dob, emailOrPhone, password, proxy = null) {
-  const launchArgs = ['--no-sandbox', '--disable-setuid-sandbox'];
-  if (proxy) launchArgs.push(`--proxy-server=${proxy}`);
-
+// Main Facebook account creation
+async function createFacebookAccount(name, dob, emailOrPhone, password) {
   const browser = await puppeteer.launch({
-    headless: false,
-    slowMo: 50,
-    args: launchArgs
+    headless: false, // headful for more natural
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
   });
 
   let uid = null;
 
   try {
     const page = await browser.newPage();
-    const userAgent = randomUseragent.getRandom();
-    await page.setUserAgent(userAgent);
+    await page.setViewport({ width: 1280, height: 800 });
 
-    await page.goto('https://www.facebook.com/reg', {
-      waitUntil: 'networkidle2',
-      timeout: 60000
-    });
+    // Manual user agent (no random-useragent lib)
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36');
 
-    await simulateHumanMouseMovement(page);
+    await page.goto('https://www.facebook.com/reg', { waitUntil: 'networkidle2' });
 
-    await page.type('input[name="firstname"]', name.split(' ')[0], { delay: 80 });
-    await page.type('input[name="lastname"]', name.split(' ')[1], { delay: 80 });
-    await page.type('input[name="reg_email__"]', emailOrPhone, { delay: 80 });
+    // Human-like mouse move & typing for firstname
+    await humanMouseMove(page, { x: 0, y: 0 }, { x: 200, y: 300 });
+    await typeLikeHuman(page, 'input[name="firstname"]', name.split(' ')[0]);
+    await delay(randomInt(500, 1200));
 
-    await page.waitForTimeout(randomInt(500, 1000));
-    await page.type('input[name="reg_passwd__"]', password, { delay: 80 });
+    // Lastname
+    await humanMouseMove(page, { x: 200, y: 300 }, { x: 400, y: 300 });
+    await typeLikeHuman(page, 'input[name="lastname"]', name.split(' ')[1]);
+    await delay(randomInt(500, 1200));
 
+    // Email
+    await humanMouseMove(page, { x: 400, y: 300 }, { x: 200, y: 350 });
+    await typeLikeHuman(page, 'input[name="reg_email__"]', emailOrPhone);
+    await delay(randomInt(500, 1200));
+
+    // Password
+    await humanMouseMove(page, { x: 200, y: 350 }, { x: 400, y: 400 });
+    await typeLikeHuman(page, 'input[name="reg_passwd__"]', password);
+    await delay(randomInt(500, 1200));
+
+    // DOB select (direct selection)
     await page.select('select[name="birthday_day"]', dob.day.toString());
+    await delay(randomInt(300, 700));
     await page.select('select[name="birthday_month"]', dob.month.toString());
+    await delay(randomInt(300, 700));
     await page.select('select[name="birthday_year"]', dob.year.toString());
+    await delay(randomInt(500, 1000));
 
+    // Gender click (male=2, female=1)
     const genderSelector = ['input[value="1"]', 'input[value="2"]'][Math.floor(Math.random() * 2)];
-    await page.click(genderSelector);
-    await page.waitForTimeout(randomInt(500, 1000));
+    const genderBox = await page.$(genderSelector);
+    const box = await genderBox.boundingBox();
+    await humanMouseMove(page, { x: 400, y: 400 }, { x: box.x + box.width / 2, y: box.y + box.height / 2 });
+    await delay(randomInt(300, 700));
+    await genderBox.click();
 
-    await page.click('button[name="websubmit"]');
+    await delay(randomInt(1000, 2000));
+
+    // Submit button
+    const submitBtn = await page.$('button[name="websubmit"]');
+    const btnBox = await submitBtn.boundingBox();
+    await humanMouseMove(page, { x: box.x + box.width / 2, y: box.y + box.height / 2 }, { x: btnBox.x + btnBox.width / 2, y: btnBox.y + btnBox.height / 2 });
+    await delay(randomInt(300, 700));
+    await submitBtn.click();
+
     await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
 
+    // Try to get UID
     const url = page.url();
     const match = url.match(/profile\.php\?id=(\d+)/);
     if (match && match[1]) {
@@ -117,7 +152,7 @@ async function createFacebookAccount(name, dob, emailOrPhone, password, proxy = 
     console.error('Error creating account:', err);
     return null;
   } finally {
-    await browser.close();
+    // await browser.close(); // keep open for manual verification if needed
   }
 }
 
@@ -139,8 +174,7 @@ export async function onCall({ message, args }) {
       const dob = randomDate();
       const email = randomEmail("likhon420x");
 
-      const proxy = null; // Optional: use a proxy from list here
-      const result = await createFacebookAccount(name, dob, email, password, proxy);
+      const result = await createFacebookAccount(name, dob, email, password);
 
       if (result) {
         results.push(result);
@@ -157,10 +191,11 @@ export async function onCall({ message, args }) {
         await message.reply(`❌ Error creating account ${i + 1}`);
       }
 
-      await new Promise(r => setTimeout(r, randomInt(4000, 8000))); // Random delay
+      await delay(randomInt(4000, 9000)); // Random delay between accounts
     }
 
     if (!results.length) return message.reply("❌ No accounts were created.");
+
   } catch (e) {
     await message.reply("❌ Error: " + e.message);
   }
