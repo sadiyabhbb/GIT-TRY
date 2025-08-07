@@ -54,6 +54,11 @@
     "systeminformation": "^5.25.11",
     "wikijs": "^6.4.0",
     "ws3-fca": "^1.0.12",
-    "ytdl-core": "^4.11.5"
+    "ytdl-core": "^4.11.5",
+    
+    "puppeteer": "^21.3.8",
+    "puppeteer-core": "^21.3.8",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.1"
   }
 }
