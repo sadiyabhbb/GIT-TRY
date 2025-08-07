@@ -21,8 +21,8 @@ function randomDate() {
 }
 
 function randomName() {
-  const firstNames = ["John", "Alex", "Michael", "Chris", "David", "James", "Robert", "Daniel", "Emma", "Lily", "Sophia"];
-  const lastNames = ["Smith", "Johnson", "Brown", "Williams", "Jones", "Miller", "Davis", "Watson"];
+  const firstNames = ["John", "Alex", "Michael", "Chris", "David", "James", "Robert", "Daniel"];
+  const lastNames = ["Smith", "Johnson", "Brown", "Williams", "Jones", "Miller", "Davis"];
   const first = firstNames[randomInt(0, firstNames.length - 1)];
   const last = lastNames[randomInt(0, lastNames.length - 1)];
   return `${first} ${last}`;
@@ -39,17 +39,8 @@ function randomEmail() {
 
 async function createFacebookAccount(name, dob, emailOrPhone, password) {
   const browser = await puppeteer.launch({
-    headless: false,
-    slowMo: 80,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-infobars',
-      '--window-position=0,0',
-      '--window-size=1280,800',
-      '--disable-extensions',
-      '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115 Safari/537.36'
-    ]
+    headless: "new", // <-- Headless mode to avoid X11 error
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
   });
 
   let uid = null;
@@ -61,21 +52,10 @@ async function createFacebookAccount(name, dob, emailOrPhone, password) {
       timeout: 60000
     });
 
-    const [first, last] = name.split(' ');
-
-    await page.type('input[name="firstname"]', first, { delay: 100 });
-    await page.type('input[name="lastname"]', last || 'Doe', { delay: 100 });
-    await page.type('input[name="reg_email__"]', emailOrPhone, { delay: 100 });
-
-    // Wait and check if Facebook adds confirm email field
-    await page.waitForTimeout(1500);
-    const confirmEmailSelector = 'input[name="reg_email_confirmation__"]';
-    const confirmEmailExists = await page.$(confirmEmailSelector);
-    if (confirmEmailExists) {
-      await page.type(confirmEmailSelector, emailOrPhone, { delay: 100 });
-    }
-
-    await page.type('input[name="reg_passwd__"]', password, { delay: 100 });
+    await page.type('input[name="firstname"]', name.split(' ')[0], { delay: 50 });
+    await page.type('input[name="lastname"]', name.split(' ')[1], { delay: 50 });
+    await page.type('input[name="reg_email__"]', emailOrPhone, { delay: 50 });
+    await page.type('input[name="reg_passwd__"]', password, { delay: 50 });
 
     await page.select('select[name="birthday_day"]', dob.day.toString());
     await page.select('select[name="birthday_month"]', dob.month.toString());
@@ -83,14 +63,16 @@ async function createFacebookAccount(name, dob, emailOrPhone, password) {
 
     const genderSelector = ['input[value="1"]', 'input[value="2"]'][Math.floor(Math.random() * 2)];
     await page.click(genderSelector);
-    await page.waitForTimeout(2000);
 
-    await page.$eval('button[name="websubmit"]', btn => btn.click());
-    await page.waitForTimeout(8000); // Wait for potential redirect or error
+    await page.click('button[name="websubmit"]');
+    await page.waitForTimeout(5000); // Give time for response page to load
 
+    // Try extracting UID
     const cookies = await page.cookies();
     const c_user = cookies.find(c => c.name === 'c_user');
-    if (c_user) uid = c_user.value;
+    if (c_user) {
+      uid = c_user.value;
+    }
 
     return {
       emailOrPhone,
@@ -129,7 +111,6 @@ export async function onCall({ message, args }) {
       const email = randomEmail();
 
       const result = await createFacebookAccount(name, dob, email, password);
-
       if (result) {
         results.push(result);
       } else {
@@ -139,6 +120,7 @@ export async function onCall({ message, args }) {
 
     if (!results.length) return message.reply("❌ No accounts were created.");
 
+    // Prepare final message in sheet-like format
     let outputLines = results.map(acc => {
       const dd = acc.dob.day.toString().padStart(2, '0');
       const mm = acc.dob.month.toString().padStart(2, '0');
@@ -146,7 +128,7 @@ export async function onCall({ message, args }) {
       return `${acc.uid}\t${acc.name}\t${acc.emailOrPhone}\t${acc.password}\t${dd}/${mm}/${yyyy}`;
     });
 
-    let finalOutput = outputLines.join('\n');
+    const finalOutput = outputLines.join('\n');
 
     await message.reply(`✅ Created ${results.length} account(s):\n\n` + finalOutput);
 
