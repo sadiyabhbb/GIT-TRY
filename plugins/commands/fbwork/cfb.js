@@ -40,38 +40,42 @@ function randomEmail() {
 
 async function createFacebookAccount(name, dob, emailOrPhone, password) {
   const browser = await puppeteer.launch({
-    headless: false,           // ব্রাউজার UI দেখাবে
-    args: ['--no-sandbox'],    // Replit বা কিছু environment এ দরকার হতে পারে
+    headless: true, // headless:true দিবে যাতে কোন GUI লাগে না
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--no-first-run',
+      '--no-zygote',
+      '--single-process', // বিশেষ ক্ষেত্রে দরকার হতে পারে
+      '--disable-gpu'
+    ],
+    defaultViewport: null
   });
 
   try {
     const page = await browser.newPage();
 
-    // Timeout বাড়িয়ে পেজ লোড করো, waitUntil দিয়ে নিশ্চিত হও যে নেটওয়ার্ক idle আছে
     await page.goto('https://www.facebook.com/reg', {
       waitUntil: 'networkidle2',
-      timeout: 60000,  // ৬০ সেকেন্ড টাইমআউট
+      timeout: 60000,
     });
 
-    // ফিল্ডগুলো পূরণ করো
     await page.type('input[name="firstname"]', name.split(' ')[0], { delay: 50 });
     await page.type('input[name="lastname"]', name.split(' ')[1], { delay: 50 });
     await page.type('input[name="reg_email__"]', emailOrPhone, { delay: 50 });
     await page.type('input[name="reg_passwd__"]', password, { delay: 50 });
 
-    // জন্মতারিখ সিলেক্ট
     await page.select('select[name="birthday_day"]', dob.day.toString());
     await page.select('select[name="birthday_month"]', dob.month.toString());
     await page.select('select[name="birthday_year"]', dob.year.toString());
 
-    // লিঙ্গ সিলেক্ট (random male/female)
     const genderSelector = ['input[value="1"]', 'input[value="2"]'][Math.floor(Math.random() * 2)];
     await page.click(genderSelector);
 
-    // Submit বাটনে ক্লিক
     await page.click('button[name="websubmit"]');
 
-    // এখানে অপেক্ষা করো, কোড ইনপুট পেজ আসার জন্য
     await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
 
     return {
@@ -94,7 +98,6 @@ export async function onCall({ message, args }) {
   try {
     if (args.length < 3) return message.reply("Usage: cfb <number> - <password>");
 
-    // parse args: first arg = number, then a dash '-', then password (rest)
     const numberCount = parseInt(args[0]);
     if (isNaN(numberCount) || numberCount <= 0) return message.reply("Please enter a valid number of accounts to create.");
 
@@ -111,17 +114,16 @@ export async function onCall({ message, args }) {
 
       const result = await createFacebookAccount(name, dob, email, password);
       if (result) results.push(result);
+      else await message.reply(`❌ Error creating account ${i + 1}`);
     }
 
-    // Save results to file
+    if (!results.length) return message.reply("❌ No accounts were created.");
+
     const lines = results.map(r => `Email/Phone: ${r.emailOrPhone}\nPassword: ${r.password}\nName: ${r.name}\nDOB: ${r.dob.day}/${r.dob.month}/${r.dob.year}\nStatus: ${r.status}\n\n`);
     const filename = `cfb_accounts_${Date.now()}.txt`;
     fs.writeFileSync(filename, lines.join(''), 'utf-8');
 
-    await message.reply(`✅ Created ${numberCount} accounts. Credentials sent in file:`, { files: [filename] });
-
-    // Optionally delete the file after sending it if required
-    // fs.unlinkSync(filename);
+    await message.reply(`✅ Created ${results.length} accounts. Credentials sent in file:`, { files: [filename] });
 
   } catch (e) {
     await message.reply("❌ Error: " + e.message);
