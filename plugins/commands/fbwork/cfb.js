@@ -31,7 +31,7 @@ function randomName() {
 function randomEmail() {
   const chars = 'abcdefghijklmnopqrstuvwxyz1234567890';
   let email = '';
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 7; i++) {
     email += chars.charAt(randomInt(0, chars.length - 1));
   }
   return email + '@gmail.com';
@@ -39,7 +39,7 @@ function randomEmail() {
 
 async function createFacebookAccount(name, dob, emailOrPhone, password) {
   const browser = await puppeteer.launch({
-    headless: "new", // ✅ fixed for headless envs like GitHub
+    headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox']
   });
 
@@ -55,14 +55,8 @@ async function createFacebookAccount(name, dob, emailOrPhone, password) {
     await page.type('input[name="firstname"]', name.split(' ')[0], { delay: 50 });
     await page.type('input[name="lastname"]', name.split(' ')[1], { delay: 50 });
     await page.type('input[name="reg_email__"]', emailOrPhone, { delay: 50 });
-
-    // Wait for re-enter email to appear
-    try {
-      await page.waitForSelector('input[name="reg_email_confirmation__"]', { timeout: 3000 });
-      await page.type('input[name="reg_email_confirmation__"]', emailOrPhone, { delay: 50 });
-    } catch (e) {}
-
     await page.type('input[name="reg_passwd__"]', password, { delay: 50 });
+
     await page.select('select[name="birthday_day"]', dob.day.toString());
     await page.select('select[name="birthday_month"]', dob.month.toString());
     await page.select('select[name="birthday_year"]', dob.year.toString());
@@ -71,24 +65,31 @@ async function createFacebookAccount(name, dob, emailOrPhone, password) {
     await page.click(genderSelector);
 
     await page.click('button[name="websubmit"]');
-    await page.waitForTimeout(5000); // short delay
 
+    // wait for 5 seconds instead of page.waitForTimeout
+    await new Promise(resolve => setTimeout(resolve, 5000));
+
+    await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
+
+    // Try extracting UID from URL
     const url = page.url();
     const match = url.match(/profile\.php\?id=(\d+)/);
     if (match && match[1]) {
       uid = match[1];
     } else {
+      // Try from cookies
       const cookies = await page.cookies();
       const c_user = cookies.find(c => c.name === 'c_user');
       if (c_user) uid = c_user.value;
     }
 
     return {
-      uid: uid || '❓NotAvailable',
-      name,
       emailOrPhone,
       password,
-      dob
+      name,
+      dob,
+      uid: uid || '❓NotAvailable',
+      status: "🕓 Waiting for confirmation code"
     };
 
   } catch (err) {
@@ -124,7 +125,7 @@ export async function onCall({ message, args }) {
 
     if (!results.length) return message.reply("❌ No accounts were created.");
 
-    // Prepare output lines
+    // Prepare output lines: UID<TAB>Name<TAB>Email<TAB>Password<TAB>DOB(dd/mm/yyyy)
     let outputLines = results.map(acc => {
       const dd = acc.dob.day.toString().padStart(2, '0');
       const mm = acc.dob.month.toString().padStart(2, '0');
@@ -132,7 +133,9 @@ export async function onCall({ message, args }) {
       return `${acc.uid}\t${acc.name}\t${acc.emailOrPhone}\t${acc.password}\t${dd}/${mm}/${yyyy}`;
     });
 
-    await message.reply("✅ Created " + results.length + " account(s):\n\n" + outputLines.join("\n"));
+    let finalOutput = outputLines.join('\n');
+
+    await message.reply(`✅ Created ${results.length} account(s):\n\n` + finalOutput);
 
   } catch (e) {
     await message.reply("❌ Error: " + e.message);
