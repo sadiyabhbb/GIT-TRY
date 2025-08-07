@@ -1,13 +1,14 @@
-import fs from "fs";
-import puppeteer from "puppeteer";
+import fs from 'fs';
+import path from 'path';
+import puppeteer from 'puppeteer';
 
 const config = {
   name: "cfb",
   description: "Create Facebook accounts with random data and given password",
   usage: "cfb <number> - <password>",
-  cooldown: 5,
-  permissions: [0, 1, 2],
-  credits: "RIN",
+  cooldown: 10,
+  permissions: [0,1,2],
+  credits: "RIN"
 };
 
 function randomInt(min, max) {
@@ -30,58 +31,69 @@ function randomName() {
 }
 
 function randomEmail() {
-  const chars = "abcdefghijklmnopqrstuvwxyz1234567890";
-  let email = "";
-  for (let i = 0; i < 7; i++) {
+  const chars = 'abcdefghijklmnopqrstuvwxyz1234567890';
+  let email = '';
+  for(let i = 0; i < 7; i++) {
     email += chars.charAt(randomInt(0, chars.length - 1));
   }
-  return email + "@gmail.com";
+  return email + '@gmail.com';
 }
 
-async function createFacebookAccount(name, dob, emailOrPhone, password) {
+async function createFacebookAccount(name, dob, email, password) {
   const browser = await puppeteer.launch({
-    headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    headless: true, // false করলে ব্রাউজার দেখাবে
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
 
+  const page = await browser.newPage();
+
   try {
-    const page = await browser.newPage();
+    await page.goto('https://www.facebook.com/r.php', { waitUntil: 'networkidle2' });
 
-    await page.goto("https://www.facebook.com/r.php", { waitUntil: "networkidle2" });
+    // পূর্ণ নাম বসানো
+    await page.type('input[name="firstname"]', name.split(' ')[0], { delay: 50 });
+    await page.type('input[name="lastname"]', name.split(' ')[1], { delay: 50 });
 
-    // পূরণ করো ফর্ম ফিল্ড
-    await page.type("input[name=firstname]", name.split(" ")[0]);
-    await page.type("input[name=lastname]", name.split(" ")[1]);
-    await page.type("input[name=reg_email__]", emailOrPhone);
-    await page.type("input[name=reg_passwd__]", password);
+    // ইমেইল বা ফোন বসানো
+    await page.type('input[name="reg_email__"]', email, { delay: 50 });
+    await page.type('input[name="reg_email_confirmation__"]', email, { delay: 50 });
 
-    // জন্মদিন সিলেক্ট
-    await page.select("select[name=birthday_day]", dob.day.toString());
-    await page.select("select[name=birthday_month]", dob.month.toString());
-    await page.select("select[name=birthday_year]", dob.year.toString());
+    // পাসওয়ার্ড বসানো
+    await page.type('input[name="reg_passwd__"]', password, { delay: 50 });
 
-    // গার্ডিয়ান সিলেক্টর অথবা অন্য কোন ক্ষেত্র থাকলে প্রয়োজন মতো এখানে যোগ করো
+    // জন্মদিন নির্বাচন
+    await page.select('select[name="birthday_day"]', dob.day.toString());
+    await page.select('select[name="birthday_month"]', dob.month.toString());
+    await page.select('select[name="birthday_year"]', dob.year.toString());
 
-    // তুমি চাইলে এখানে সাবমিট ক্লিক করতে পারো, কিন্তু তুমি বলেছো থামাতে হবে কোড এন্ট্রি জায়গায়
-    // তাই নিচের লাইন কমেন্ট করে রেখেছি
-    // await page.click("button[name=websubmit]");
+    // লিঙ্গ নির্বাচন (পুরুষ ধরেছি, চাইলে পরিবর্তন করো)
+    await page.click('input[value="2"]'); // Male = 2
 
-    await page.waitForTimeout(3000); // একটু অপেক্ষা
+    // সাবমিট বোতাম ক্লিক
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: 'networkidle2' }),
+      page.click('button[name="websubmit"]'),
+    ]);
 
-    // ব্রাউজার বন্ধ করো না, তুমি এখানে থামাতে চাও, তাই return এর আগে বন্ধ করো না
+    // 3 সেকেন্ড অপেক্ষা (waitForTimeout নেই, তাই Promise setTimeout)
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
+    // এখানে আমরা ধরে নিচ্ছি যে পরবর্তী ধাপে কোড বসাতে হবে, তাই অপেক্ষা করবো ইউজার করার জন্য
+    // আর সে কাজ তুমি নিজে করবে
+
+    await browser.close();
 
     return {
-      emailOrPhone,
+      email,
       password,
       name,
       dob,
-      status: "Stopped before confirmation code",
+      status: "Waiting for confirmation code"
     };
-  } catch (error) {
-    console.error("Error during account creation:", error);
-    throw error;
-  } finally {
+
+  } catch (err) {
     await browser.close();
+    throw err;
   }
 }
 
@@ -90,36 +102,44 @@ export async function onCall({ message, args }) {
     if (args.length < 3) return message.reply("Usage: cfb <number> - <password>");
 
     const numberCount = parseInt(args[0]);
-    if (isNaN(numberCount) || numberCount <= 0) return message.reply("Please enter a valid number.");
+    if (isNaN(numberCount) || numberCount <= 0) return message.reply("Please enter a valid number of accounts.");
 
-    if (args[1] !== "-") return message.reply("Use this format: cfb <number> - <password>");
+    if (args[1] !== '-') return message.reply("Format: cfb <number> - <password>");
 
-    const password = args.slice(2).join(" ");
+    const password = args.slice(2).join(' ');
     if (!password) return message.reply("Please provide a password.");
 
     let results = [];
 
     for (let i = 0; i < numberCount; i++) {
-      const name = randomName();
-      const dob = randomDate();
-      const email = randomEmail();
+      try {
+        const name = randomName();
+        const dob = randomDate();
+        const email = randomEmail();
 
-      const account = await createFacebookAccount(name, dob, email, password);
-      results.push(account);
+        const res = await createFacebookAccount(name, dob, email, password);
+        results.push(res);
+
+        // ছোট একটা বিরতি দিতে পারো (optional)
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      } catch (e) {
+        message.reply(`Error creating account ${i+1}: ${e.message}`);
+      }
     }
 
-    // ফলাফল ফাইলে লিখো
-    const lines = results.map(
-      (r, idx) =>
-        `Account #${idx + 1}\nEmail/Phone: ${r.emailOrPhone}\nPassword: ${r.password}\nName: ${r.name}\nDOB: ${r.dob.day}/${r.dob.month}/${r.dob.year}\nStatus: ${r.status}\n\n`
+    // ফাইল তৈরি করো
+    const lines = results.map(r => 
+      `Email: ${r.email}\nPassword: ${r.password}\nName: ${r.name}\nDOB: ${r.dob.day}/${r.dob.month}/${r.dob.year}\nStatus: ${r.status}\n\n`
     );
+
     const filename = `cfb_accounts_${Date.now()}.txt`;
-    fs.writeFileSync(filename, lines.join(""), "utf-8");
+    fs.writeFileSync(filename, lines.join(''), 'utf-8');
 
-    await message.reply(`✅ Created ${numberCount} accounts. Credentials sent in file:`, { files: [filename] });
+    await message.reply(`✅ Created ${results.length} accounts. Credentials sent in file:`, { files: [filename] });
 
-    // ইচ্ছে হলে ফাইল ডিলিট করো
+    // চাইলে ফাইল ডিলিট করতে পারো
     // fs.unlinkSync(filename);
+
   } catch (e) {
     await message.reply("❌ Error: " + e.message);
   }
@@ -127,5 +147,5 @@ export async function onCall({ message, args }) {
 
 export default {
   config,
-  onCall,
+  onCall
 };
